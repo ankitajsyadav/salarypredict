@@ -104,7 +104,7 @@ if mode == "Predict Salary":
     st.write(f"Based on your inputs, your estimated salary is: **${predicted_salary[0]:,.2f}**")
 
 else:
-    st.title("Explore Software Engineer Salaries")
+    st.title("Explore Data Professional Salaries")
     st.markdown("### Stack Overflow Developer Survey 2020")
 
     df_vis = load_data()
