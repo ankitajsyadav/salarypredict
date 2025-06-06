@@ -6,12 +6,12 @@ from sklearn.tree import DecisionTreeRegressor
 from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 #%%
-# Set page configuration as the first command
 st.set_page_config(page_title="Salary Predictor & Explorer", page_icon="💰", layout="wide")
 
-# Load data and preprocess
+# Data cleaning functions
 def shorten_categories(categories, cutoff):
     categorical_map = {}
     for i in range(len(categories)):
@@ -60,10 +60,7 @@ def load_data():
 
 df = load_data()
 
-print(df)
-
-#%%
-# Prepare features and target variable
+# Encode for model training
 le_education = LabelEncoder()
 df['EdLevel'] = le_education.fit_transform(df['EdLevel'])
 le_country = LabelEncoder()
@@ -72,7 +69,6 @@ df['Country'] = le_country.fit_transform(df['Country'])
 X = df.drop("Salary", axis=1)
 y = df["Salary"]
 
-#%%
 # Train model
 regressor = DecisionTreeRegressor(random_state=0)
 parameters = {"max_depth": [None, 2, 4, 6, 8, 10, 12]}
@@ -82,77 +78,116 @@ regressor = gs.best_estimator_
 regressor.fit(X, y.values)
 
 #%%
-# Streamlit app
 st.title("💰 Salary Predictor & Explorer")
 mode = st.sidebar.radio("Select Mode", ["Predict Salary", "Explore Data"])
 
 if mode == "Predict Salary":
     st.subheader("Salary Prediction")
-    st.markdown("""
-        Fill in the details below to get an estimated salary based on your inputs.
-    """)
+    st.markdown("Fill in the details below to get an estimated salary based on your inputs.")
 
-    # User input for prediction
     country = st.selectbox("Select Country", le_country.inverse_transform(range(len(le_country.classes_))))
     years_experience = st.number_input("Years of Experience", min_value=0.0, max_value=50.0, step=0.5)
     education_level = st.selectbox("Select Education Level", le_education.inverse_transform(range(len(le_education.classes_))))
 
-    # Prepare input data for prediction
     input_data = pd.DataFrame({
         'Country': [country],
         'EdLevel': [education_level],
         'YearsCodePro': [years_experience]
     })
 
-    # Encode input data
     input_data['EdLevel'] = le_education.transform(input_data['EdLevel'])
     input_data['Country'] = le_country.transform(input_data['Country'])
 
-    # Predict salary
     predicted_salary = regressor.predict(input_data)
 
-    # Display result
     st.subheader("🔍 Estimated Salary")
     st.write(f"Based on your inputs, your estimated salary is: **${predicted_salary[0]:,.2f}**")
 
 else:
     st.title("Explore Software Engineer Salaries")
+    st.markdown("### Stack Overflow Developer Survey 2020")
 
-    st.write(
-        """
-    ### Stack Overflow Developer Survey 2020
-    """
-    )
+    df_vis = load_data()
+    country_filter = st.multiselect("Filter by Country", df_vis["Country"].unique(), default=df_vis["Country"].unique())
+    filtered_df = df_vis[df_vis["Country"].isin(country_filter)]
 
-    data = df["Country"].value_counts()
+    # Key metrics
+    st.write("### 💼 Key Salary Insights")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Average Salary", f"${filtered_df['Salary'].mean():,.0f}")
+    col2.metric("Median Salary", f"${filtered_df['Salary'].median():,.0f}")
+    col3.metric("Max Salary", f"${filtered_df['Salary'].max():,.0f}")
 
-    # Pie chart for country distribution
+    # Pie chart
+    st.write("#### Distribution of Data from Different Countries")
+    country_counts = filtered_df["Country"].value_counts()
     fig1, ax1 = plt.subplots()
-    ax1.pie(data, labels=data.index, autopct="%1.1f%%", shadow=True, startangle=90)
-    ax1.axis("equal")  # Equal aspect ratio ensures that pie is drawn as a circle.
-    st.write("""#### Distribution of Data from Different Countries""")
+    ax1.pie(country_counts, labels=country_counts.index, autopct="%1.1f%%", shadow=True, startangle=90)
+    ax1.axis("equal")
     st.pyplot(fig1)
 
-    # Bar chart for mean salary by country
+    # Bar chart: salary by country
     st.write("#### Mean Salary Based On Country")
-    data = df.groupby(["Country"])["Salary"].mean().sort_values(ascending=True)
-    st.bar_chart(data)
+    country_salary = filtered_df.groupby("Country")["Salary"].mean().sort_values(ascending=True)
+    st.bar_chart(country_salary)
 
-    # Line chart for mean salary by years of experience
+    # Line chart: salary by experience
     st.write("#### Mean Salary Based On Experience")
-    data = df.groupby(["YearsCodePro"])["Salary"].mean().sort_values(ascending=True)
-    st.line_chart(data)
+    exp_salary = filtered_df.groupby("YearsCodePro")["Salary"].mean().sort_values(ascending=True)
+    st.line_chart(exp_salary)
+
+    # Bar chart: salary by education
+    st.write("#### Mean Salary Based on Education Level")
+    edu_salary = filtered_df.groupby("EdLevel")["Salary"].mean().sort_values()
+    st.bar_chart(edu_salary)
+
+    # Box plot: salary by education
+    st.write("#### Salary Distribution by Education Level")
+    fig2, ax2 = plt.subplots(figsize=(10, 5))
+    sns.boxplot(x='EdLevel', y='Salary', data=filtered_df, ax=ax2)
+    ax2.set_xticklabels(ax2.get_xticklabels(), rotation=45)
+    ax2.set_title("Salary Distribution by Education Level")
+    ax2.set_ylabel("Salary")
+    ax2.set_xlabel("Education Level")
+    st.pyplot(fig2)
+
+    # Scatter plot with legend
+    st.write("#### Experience vs Salary Colored by Country")
+    fig3, ax3 = plt.subplots(figsize=(10, 5))
+    filtered_df['Country_Code'] = filtered_df['Country'].astype('category').cat.codes
+    scatter = ax3.scatter(filtered_df["YearsCodePro"], filtered_df["Salary"],
+                          c=filtered_df["Country_Code"], cmap="tab20", alpha=0.6)
+    ax3.set_xlabel("Years of Experience")
+    ax3.set_ylabel("Salary")
+    ax3.set_title("Experience vs Salary by Country")
+
+    # Legend for scatter
+    handles = []
+    labels = []
+    unique_codes = filtered_df[['Country', 'Country_Code']].drop_duplicates().sort_values('Country_Code')
+    for _, row in unique_codes.iterrows():
+        handles.append(plt.Line2D([], [], marker="o", linestyle="", 
+                                  color=plt.cm.tab20(row['Country_Code'] / 20), alpha=0.6))
+        labels.append(row['Country'])
+    ax3.legend(handles, labels, title="Country", bbox_to_anchor=(1.05, 1), loc='upper left')
+    st.pyplot(fig3)
+
+    # Histogram
+    st.write("#### Salary Distribution Histogram")
+    fig4, ax4 = plt.subplots()
+    ax4.hist(filtered_df["Salary"], bins=30, color='skyblue', edgecolor='black', label='Salary')
+    ax4.set_xlabel("Salary")
+    ax4.set_ylabel("Frequency")
+    ax4.set_title("Histogram of Salaries")
+    ax4.legend()
+    st.pyplot(fig4)
 
 #%%
-# Optional: Add a footer with additional information
 st.markdown("""
-    ---
-    ### About this App
-    This application uses data from a global survey of developers to predict salaries and explore salary trends. 
-    Please enter your details for prediction or explore the data visualizations.
+---
+### About this App
+This application uses data from a global survey of developers to predict salaries and explore salary trends. 
+Please enter your details for prediction or explore the data visualizations.
+
+Built with ❤️ using Streamlit and Scikit-learn.
 """)
-
-# Optional: Add an image or logo
-# st.image("path/to/logo.png", use_column_width=True)  # Uncomment and provide path if you have a logo
-
-# %%
